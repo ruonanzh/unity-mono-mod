@@ -1,0 +1,16 @@
+# .pi/skills/
+
+每接入一款游戏，在这里按**能力**写 SKILL（一份 SKILL = 一件玩家会要求的事）。骨架只给模板，不预置内容。
+
+| 文件 | 作用 |
+|---|---|
+| `_template/SKILL.md` | 空白模板：frontmatter + 四段结构 |
+| （接入后新增） | 例如 `replace-model/SKILL.md`、`add-item/SKILL.md` |
+
+写 SKILL 的三条：
+
+1. `description` 只写「**什么时候用**」与「**不适用什么**」，不要写步骤（步骤在正文）。
+2. 正文四段：**需要的输入** → **做** → **验收** → **常见错误**。每条「做」都写清用哪个工具、哪个参数。
+3. 每条判断都要带来源（`dump` 命令、反编译片段、实测日志一行）。没有来源的判断会腐化。
+
+参考实现：duckov 仓的 `.pi/skills/`（8 份 SKILL，其中 `add-item` / `replace-gun-model` 是完整范本）。
