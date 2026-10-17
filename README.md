@@ -29,6 +29,21 @@ docs/              该游戏的数据地图与做法（接入时由 agent 写）
 4. 把结论写进 `docs/` 与该游戏的 `AGENTS.md`，每条带实测来源。
 5. 编译：`GAME_DIR=<游戏目录> dotnet build mods/<name>`。
 
+## game.json 的字段
+
+| 字段 | 用途 |
+|---|---|
+| `entry.installDir` / `managedDir` / `assetsDir` | 相对游戏目录的路径；`try_set_game_dir` 与探针都用它 |
+| `sentinel` | 该游戏自带的程序集名，用来确认目录真的是这个游戏 |
+| `assemblies` | 编译要引用的游戏程序集（`validate_mod` 会转成 `-p:GameAssemblies=…` 传给 csproj） |
+| `actions` | 该游戏 config 允许的 action 名。**空数组 = 不校验 action 名**（骨架默认） |
+| `checks` | 可选的数据检查（`itemClass` / `tagClass` / `merchantClass` / `assetsFile`…）。缺项时对应检查跳过 |
+| `modules` | 启用的可选模块（如 `gltf`） |
+
+## 3D 与 2D
+
+`libs/modules/` 是可选的：2D 游戏把整个目录删掉，`libs/core/` 与工具照常工作。
+
 ## 工具
 
 ```bash

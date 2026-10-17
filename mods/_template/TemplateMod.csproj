@@ -17,9 +17,14 @@
     <Error Text="GAME_MANAGED_DIR is not set. Export it (export GAME_MANAGED_DIR=&lt;install&gt;/Managed) or run this game's validate tool." />
   </Target>
 
-  <!-- 游戏程序集：按 game.json 的 assemblies 逐个引用（Private=false，不随 mod 分发） -->
+  <!-- 游戏程序集：只引用 game.json 里 assemblies 声明的那几个 + Unity*。
+       通配 $(ManagedDir)/*.dll 会把 .NET 框架程序集也带进来，导致 CS0234 一类冲突（实测）。 -->
   <ItemGroup>
-    <Reference Include="$(ManagedDir)/*.dll">
+    <GameAssembly Include="$(GameAssemblies)" Condition="'$(GameAssemblies)' != ''" />
+    <Reference Include="$(ManagedDir)/Unity*.dll" Condition="Exists('$(ManagedDir)')">
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="@(GameAssembly->'$(ManagedDir)/%(Identity).dll')" Condition="Exists('$(ManagedDir)')">
       <Private>false</Private>
     </Reference>
   </ItemGroup>

@@ -10,5 +10,6 @@
   "assemblies": ["TODO: game assemblies to reference"],
   "managedDir": "TODO: <install>/Managed",
   "assetsDir": "TODO: <install>/Data",
+  "actions": [],
   "modules": []
 }
