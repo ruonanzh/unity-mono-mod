@@ -1,0 +1,181 @@
+# data-probe — 读 Unity3D 游戏的内容数据（给 agent 用）
+
+读取游戏数据文件里**序列化对象**的**字段与值**，用来回答"现在是什么样"：物品价格 `Item.value`、
+武器数值 `Item.stats`（`Damage`…）、任务条件 `Quest.requiredItemCount`、敌人预设
+`CharacterRandomPreset.isBoss`、以及**场景**（`levelN` 文件里的 GameObject / Transform / Camera 等
+对象与挂在它们上的脚本）。
+
+- **只读**：不修改任何文件（改数值/改行为是 mod 运行时 C# 的事，不是本工具的活）。它读场景是为了
+  "查清楚运行时有什么"（好让 mod 的 C# 去找/补丁），**不是关卡编辑器**。
+- **离线**：依赖已 vendored 在 `lib/`，不联网。
+
+## 为什么能读到自定义字段
+
+成品游戏的数据文件里**没有 type tree**。本工具用游戏**自己的托管 DLL**现算脚本类的字段布局
+（`AssetsTools.NET.MonoCecil` 的 `MonoCecilTempGenerator`），加一份内置类型库
+（`lib/classdata.tpk`），才能把二进制解成字段。
+
+## 用法
+
+```bash
+dotnet run --project tools/data-probe -- \
+  --managed "<game>/.../Managed" --data "<game>/.../Data" \
+  --action <classes|search|list|dump|refs|export|transform> [options]
+```
+
+| action | 选项 | 作用 |
+|---|---|---|
+| `classes` | — | 列出资产**类名 + 数量**（含内置类型：`GameObject`/`Transform`/`Camera`…）|
+| `list` | `--class <C>` | 列出某类的资产（name / typeID / pathID；**每次最多 500 条**，用 `--offset` 翻页）|
+| `search` | `--pattern <p>` `[--class C]` | 按名称/类/typeID 找资产（**每次最多 500 条**，用 `--offset` 翻页）|
+| `dump` | `--class <C>` ＋ (`--name`\|`--typeid`\|`--pathid`) `[--depth d] [--follow]` | dump 该资产的**字段 + 值**；`--follow` **跟随引用**（如 `Item.stats` → `StatCollection`、`Item.itemGraphic` → `ItemGraphicInfo` → 渲染器 ✓）—— ⭐ **可跨数据文件** ✓（按 `--depth` 决定能跟几跳 ✓）|
+| `refs` | 同 `dump` 的定位 | 列出该资产**引用了哪些对象**（PPtr）—— 每行带 **fileID** ✓（`[本文件]` / `[外部 fileId=N]`）**并把引用目标解出来** ✓（类名 + 名字 ✓；跨文件时标出在哪个文件 ✓）|
+
+**过滤参数（v2 新增）** ✓：
+
+- ⭐ **`--mesh <mesh 名>`**（`transform`）⇒ **由 mesh 名反查**挂它的 `MeshFilter` ⇒ 拿它的 GameObject 的 Transform ✓
+  ⇒ ⭐ **一步**得到"这个模型在游戏里的**真实尺寸**"✓（以前要 `search` → 抄 pathID → `dump` 三步 ✓）。
+  例：`transform --mesh Rifle02 --exact --file level4 --depth 0` ✓
+- **`--exact`** ⇒ `--name` / `--mesh` 改成**严格相等** ✗（默认子串 ✓）。
+  ⚠️ 很有用 ✓：`Rifle02` 与 `Rifle02_Sight` 是两把不同东西 ✓ 子串分不开 ✗
+- **`--has <组件名>`**（`transform`）⇒ 只保留**挂着该组件**的对象 ✓
+  （例：`--has MeshFilter` 只看有模型的 ✓；`--has ItemGraphicInfo` 找"换外观"的中枢 ✓）
+- ⭐⭐ **`refs --by <类名>`** ⇒ **反查** ✗：**哪些该类的对象引用了它** ✓
+  - 注意：**反查父物体时，定位要指向「子物体的 `Transform`」，不是子 `GameObject`**。
+    父物体引用的是子 `Transform`（字段 `m_Father`），不是子 `GameObject`。
+    实测踩过：指 `GameObject` 只会得到它自己的那个 Transform（`via m_GameObject`），
+    看起来像「找不到父物体」，其实是定位错了对象。
+    两步拿到父链，可循环一路向上：
+    ```bash
+    # ① 先由 GameObject 拿到它自己的 Transform
+    data-probe ... --action refs --class GameObject --pathid <GameObject> --by Transform
+    # ② 再由那个 Transform 拿父物体；结果里 `m_Father` 那行是父，`data` 那行是父的 m_Children 数组
+    data-probe ... --action refs --class Transform  --pathid <上一步的 Transform> --by Transform
+    ```
+    实测例：`Arm.Upper.R` 的父链向上是 `Arm.Root.R`、`Spine.003`、`Spine.002`、`Spine.001`、`Hip`、`Root`、`Duck_Armature`。
+    于是离线就能看出这套手臂模型挂在 `Spine.003` 下，属于 NPC 骨架（本例 `0_CharacterModel_Boss_Wu`）。
+  （正向 `refs` 是"我引用了谁"✗ —— 反方向以前完全没有 ✗）
+  例：`refs --class Mesh --name Rifle02 --exact --file sharedassets4.assets,level4 --by MeshFilter`
+  ⇒ `MeshFilter (pathID 3321) via m_Mesh (resolved)` ✓
+- ⭐ **`--file` 支持多个**（逗号分隔 ✓）—— 跨文件反查**必须同时加载两边** ✗
+  （`Mesh` 在 `sharedassets4.assets` ✓ 引用它的 `MeshFilter` 在 `level4` ✗）
+
+**输出与上限**（`--out` 与 `--limit`）✓：
+
+- **不给 `--out`** ⇒ 输出**显示**到 `--limit` 行（默认 2000 ✓）就**停** ✓，末尾提示
+  `... (stopped at N lines — rerun with --out <file> to capture everything)` ✓
+  ⇒ ⚠️ **显示截断 ≠ 数据丢失** ✓（要全部就落盘 ✓）
+- ⭐ **给 `--out <file>`** ⇒ **边生成边写文件**（流式 ✓ 内存恒定 ✓）⇒ **数据一条不少** ✓；
+  stdout 只回前 40 行预览 ✓ ⇒ 再用 `read` / `grep` 去查那个文件 ✓
+- ⚠️ **落盘也默认上限 `1_000_000` 行** ✗ —— 因为 `dump --depth 7 --follow` 这种是**指数展开** ✓
+  （实测过一次写出 **141,181,293 行 / 几 GB** ✗ 磁盘会爆 ✓）；到上限会**明确告知** ✓ 不静默丢 ✓。
+  确实需要更多 ⇒ 显式 `--limit <N>` ✓
+- ⚠️ 到上限时**递归也立刻停** ✗（只停"记录"没用 ✗：`--follow` 的展开本身会吃光时间和内存 ✓）
+
+> 数组**不展开时只印个数** ✓：`[]` = 空数组 ✓，`<3 item(s), not expanded>` = 有 3 个但没展开 ✓。
+> `--follow` 遇到这种数组就停下 ✓（如渲染器的 `m_Materials` ✓）——
+> 要拿材质就改走 ✓：`search --class Material --pattern <名字>` ✓ 再对它 `refs` ✓ 读 `m_Shader` ✓（跨文件也能读到 ✓）。
+| `transform` | `--name <n>` \| `--pathid <p>` \| ⭐ **`--mesh <mesh 名>`** `[--exact]` `[--has <组件>]` `[--depth d]` `[--file levelN]` | ⭐ **Transform 链**：目标的 local TRS ✓ + **父链**（逐级 + **累计世界缩放** ✓）+ **子节点树**（找 `Sockets/…` 挂点 ✓）。⚠️ Unity 的 Transform **每级都是 local** ✗ ⇒ 「模型在游戏里到底多大 / 挂点在哪」只能这样算 ✓。挂了 **MeshFilter** 时顺带读 `Mesh.m_LocalAABB` × 累计缩放 = ⭐ **真实尺寸（米）** ✓（例：`Rifle02` mesh 本地 1.525 m ✓ 累计缩放 0.6545 ⇒ 游戏里 **0.998 m** ✓）。⚠️ 场景/prefab 在 **`levelN`** 里 ✗ ⇒ 加 `--file levelN` ✓；mesh 挂在 **`MeshFilter`** 上 ✗（不是 `MeshRenderer` ✓）|
+| `export` | `--class <C>` `[--match <expr>]…` `[--field <path>]…` `[--rows N]` `[--out <file>]` | **批量表**：一类对象 × 过滤 × 字段路径 → 每行一个资产（TAB 分列；数组用 `;` 连）。`--out` 写文件、只回预览 |
+
+公共：`--file <x.assets|levelN|bundle>`（限定单个数据文件；**`levelN` = 场景文件**，格式与 `.assets` 相同；**也可以直接给 AssetBundle**（例如 mod 的包）—— 内存解包，只读、不落临时文件）、`--limit N`（截断，默认 2000 行）、`--depth d`（dump 深度，默认 3）、`--offset N`（跳过前 N 条，给 `list`/`search` 翻页用）。
+
+> `list` / `search` 每次最多 500 条；截断时会提示 `--offset <下一页>`——**优先用更窄的查询（`search --pattern` / `dump --name`），确实要枚举时才翻页**。
+
+### ⚠️ 两个易踩的坑 ✓
+
+- **`--pathid` 要的是资产 pathID，不是游戏 typeID** ✗ —— 两个都是整数，但含义不同 ✓：
+  `list` / `search` 结果里那一列才是 pathID ✓；`--typeid` 是游戏数据的 typeID ✓（按数据查要配 `--class` 一起用 ✓）。
+  传错**不会报错** ✗，会静默 dump 到"同编号的另一个资产"
+  （实测：把 Item 的 `typeID=43` 当 `--pathid` 传 → 拿回来的是一个 `Material` ✓）。
+- **数组不展开时印个数** ✓ —— 类型库 `classdata.tpk` 里没有元素类型时，数组不展开 ✓，
+  只印 `[]`（空 ✓）或 `<N item(s), not expanded>` ✓。
+  这一行为和 `--depth` 无关 ✓（`--depth 20` 也一样 ✓）。
+  要取数组里的对象 ⇒ 用 `search` / `refs` ✓，或拿到 `pathID` 直接 `dump` ✓。
+
+## 出口码与静默边界（2026-10-17）
+
+**不要只看「有没有输出」，要看退出码。**
+
+| 出口码 | 含义 | 你会看到 |
+|---|---|---|
+| 0 | 成功（含**合法空结果**）| 正常内容；0 命中时带 `# WARNING: …` |
+| 1 | 参数合法但**目标不存在**（类名/名字/pathID 查不到）| `# ERROR: …` + 建议 |
+| 2 | **调用方式错**（未知 flag、flag 缺值、缺必填参数）| stderr 一行 + usage |
+
+具体边界：
+
+- `--class` 写错 → **exit 1**（不是「0 行」），并给近邻类名。
+- `--match` 把行全滤掉 → exit 0 + `# WARNING: the --match filter matched no rows`。
+- 所有 `--field` 都解不出值 → `# ERROR` + **exit 1**。
+- `dump` / `refs` 目标不存在 → `# ERROR` + exit 1，并提示 `file=levelN`（**pathID 是按文件编的**）。
+- `transform --pathid` 不带 `--file` → 可能命中**另一个文件里的同号对象**：会给 `# note: resolved in <file>` 或 `# WARNING: pathID N exists in M files`，标题里也带 `[file]`。
+- 未知 flag、flag 末尾缺值 → **exit 2**（以前被静默忽略）。
+- `--limit` 与 `--rows`：`export` 只认 `--rows`（默认 500；带 `--out` 时上限 100 万行，见上面的 `rowCap`）。给 `export --limit` 会被**忽略**并打 `# note:`（旧版把它当 rows 的别名，于是带 `--out` 也永远只写 500 行）。其余 action 用 `--limit`。
+- `--out` 的目录不存在 → **exit 2**（以前抛未捕获异常，exit 134）。
+- 与 action 无关的 flag（例如 `export --depth`）→ `# WARNING: --depth has no effect on 'export'`。
+- `--out` 落盘但 0 数据行 → `# WARNING: wrote only the header (0 rows)`。
+
+## `export` 的路径语法（`--field` / `--match` 共用）
+
+一段一段用 `.` 分隔，**PPtr 自动跟随**：
+
+| 段 | 含义 |
+|---|---|
+| `a` | 字段 `a` |
+| `a[]` | 展开数组（每个元素一个值）|
+| `a[i]` | 取下标 i |
+| `#class` | 当前 PPtr **解析后对象的类名**（如 `ItemSetting_Gun`）|
+| `#name` | 解析后对象的名字 |
+
+`--match` 运算符：`=` `!=` `~`（子串，忽略大小写）`>` `>=` `<` `<=`；可重复（AND；数组路径=任一元素命中）。
+
+> ⚠️ `!=` 的语义：**值列表为空（字段缺失）也视为不等** → `a!=x` 会匹配到“根本没有 a”的对象。Unity 会序列化类型的所有字段，所以“缺失”实际很少见；但写过滤时心里有数。
+> ⚠️ `--out` 会**由工具直接写文件**（不经过 write/edit 工具，也**不校验路径**）—— 与 mod-guard 现状一致（它只拦 write/edit，bash 本就能写任意路径）。
+> ⚠️ `--field` **必须重复写**：`--field a --field b`。给一个 JSON 数组（`--field '["a"]'`）会被当成**一个**路径，解析不到。
+> 解析不到的路径**不再静默**（2026-10-17）：一行都没解出值时会打 `# WARNING: field '…' matched nothing in N row(s)`；若**所有** `--field` 都解不出值，再打 `# ERROR: …` 并以 **exit 1** 退出 —— 空列不等于「数据本来就是空的」，不得拿它当结论。
+> （扩展 `inspect_game_data` 的 `field=[...]` 是**扩展层**写法，它会自己展开成重复的 `--field`。）
+
+```bash
+# 一次拿全 124 把枪的数值（“是武器”靠 m_GameObject 组件里有没有 ItemSetting_Gun 判定）
+data-probe ... --action export --class Item \
+  --match "m_GameObject.m_Component[].component.#class=ItemSetting_Gun" \
+  --field displayName --field value --field "stats.list[].key" --field "stats.list[].baseValue"
+# → name  typeID  pathID  displayName  value  columns...
+#   stats.list[].key 与 .baseValue 是**平行数组**，按 `;` 切开后一一对应
+```
+
+同类可换任意类型：`--class Quest --match "requireLevel>=1"`、`--class CharacterRandomPreset --match "isBoss=1"`。
+
+**大批量 → 用 `--out <file>` 落盘**：表写进文件，stdout 只回**前 3 行 + 文件路径**（数据不进模型上下文；`--rows` 默认也不再限制）。之后用 bash/python 处理那个文件。实测 124 把枪：工具回 **3 KB** 预览，文件 **115 KB**。
+
+## 例
+
+```bash
+# 找武器
+data-probe ... --action search --pattern UAK45 --class Item
+#   Item  Item_S_UAK45_Lv_2  typeID=260  pathID=84067
+
+# 读它的数值（跟随 stats）
+data-probe ... --action dump --class Item --name Item_S_UAK45_Lv_2 --follow
+#   ... stats -> StatCollection
+#         key = Damage          baseValue = 9.2
+#         key = ShootSpeed      baseValue = 15.83
+#         key = Capacity        baseValue = 25
+
+# 读 mod 的 AssetBundle（看它打包了什么：mesh / material / texture）—— data 指向包所在目录
+#   data-probe ... --data "<mod>/bundles" --file mpxmodels --action classes
+
+action=list --class Texture2D   # 贴图与尺寸；list --class Mesh / Material 同理
+
+# 读场景：levelN 就是场景文件（主菜单、关卡等）
+data-probe ... --action classes --file level0           # 153 类 / 5516 对象
+data-probe ... --action list --class GameObject --file level0
+data-probe ... --action dump --class GameObject --name DevCam --file level0 --follow
+#   ... m_Component -> Transform ... m_LocalPosition x/y/z
+```
+
+## 依赖（vendored，来自 UABEA 包，MIT）
+
+`lib/`：`AssetsTools.NET.dll`、`AssetsTools.NET.MonoCecil.dll`、`Mono.Cecil.dll`、
+`Mono.Cecil.Rocks.dll`、`classdata.tpk`。

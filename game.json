@@ -1,0 +1,14 @@
+{
+  "name": "TODO: game name",
+  "loader": "mono-assembly-loadfrom",
+  "entry": {
+    "manifestFile": "info.ini",
+    "classNameTemplate": "<name>.ModBehaviour",
+    "installDir": "TODO: <game>/Mods"
+  },
+  "sentinel": "TODO: a DLL that proves the install dir is the game",
+  "assemblies": ["TODO: game assemblies to reference"],
+  "managedDir": "TODO: <install>/Managed",
+  "assetsDir": "TODO: <install>/Data",
+  "modules": []
+}

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- 三处必须一致：这里、ModBehaviour.cs 的 namespace、info.ini 的 name -->
+    <AssemblyName>TemplateMod</AssemblyName>
+    <RootNamespace>TemplateMod</RootNamespace>
+
+    <!-- 游戏目录与 Managed 目录：export GAME_DIR / GAME_MANAGED_DIR（或由该游戏的 validate 工具带上） -->
+    <GameDir Condition="'$(GAME_DIR)' != ''">$(GAME_DIR)</GameDir>
+    <ManagedDir Condition="'$(GAME_MANAGED_DIR)' != ''">$(GAME_MANAGED_DIR)</ManagedDir>
+  </PropertyGroup>
+
+  <Target Name="RequireGameDir" BeforeTargets="ResolveReferences" Condition="'$(ManagedDir)' == ''">
+    <Error Text="GAME_MANAGED_DIR is not set. Export it (export GAME_MANAGED_DIR=&lt;install&gt;/Managed) or run this game's validate tool." />
+  </Target>
+
+  <!-- 游戏程序集：按 game.json 的 assemblies 逐个引用（Private=false，不随 mod 分发） -->
+  <ItemGroup>
+    <Reference Include="$(ManagedDir)/*.dll">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- 公共 helper：按需保留。libs/modules 里是可选能力（3D 等），2D 游戏可以整段删掉 -->
+  <ItemGroup>
+    <Compile Include="../../libs/core/*.cs" Link="libs/%(Filename)%(Extension)" />
+    <Compile Include="../../libs/modules/*.cs" Link="libs/modules/%(Filename)%(Extension)" Condition="Exists('../../libs/modules')" />
+  </ItemGroup>
+</Project>

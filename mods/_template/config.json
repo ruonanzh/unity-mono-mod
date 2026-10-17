@@ -1,0 +1,9 @@
+{
+  "entries": [
+    {
+      "action": "replace_model",
+      "targets": ["TODO: 目标对象名或标识"],
+      "model": "model.glb"
+    }
+  ]
+}

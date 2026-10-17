@@ -1,0 +1,201 @@
+// Json.cs —— 极小的 JSON 解析（只读），不依赖任何库。
+//
+// 为什么自己写：模型文件在**离线工具**和**运行时 mod** 里都要解析。
+// 工具用 System.Text.Json、运行时用 Newtonsoft 会变成两套解析、两个真相；
+// 自己写一份（~150 行）就能两边共用，且不引入依赖（Unity 里也不用管包）。
+// 只支持 JSON 标准子集：对象 / 数组 / 字符串（含转义）/ 数字 / true / false / null。
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+
+namespace ModelKit
+{
+    public enum JsonKind { Null, Bool, Number, String, Array, Object }
+
+    public sealed class JsonValue
+    {
+        public JsonKind Kind;
+        public bool Bool;
+        public double Number;
+        public string Str;
+        public List<JsonValue> Array;
+        public Dictionary<string, JsonValue> Object;
+
+        public bool IsObject => Kind == JsonKind.Object;
+        public bool IsArray => Kind == JsonKind.Array;
+
+        public JsonValue this[string key]
+            => (Kind == JsonKind.Object && Object.TryGetValue(key, out var v)) ? v : null;
+
+        public JsonValue this[int i]
+            => (Kind == JsonKind.Array && i >= 0 && i < Array.Count) ? Array[i] : null;
+
+        public int Count => Kind == JsonKind.Array ? (Array?.Count ?? 0) : 0;
+
+        public float AsFloat(float fallback = 0f)
+            => Kind == JsonKind.Number ? (float)Number : (Kind == JsonKind.String && float.TryParse(Str, NumberStyles.Float, CultureInfo.InvariantCulture, out var f) ? f : fallback);
+
+        public int AsInt(int fallback = 0) => Kind == JsonKind.Number ? (int)Math.Round(Number) : fallback;
+        public string AsString(string fallback = null) => Kind == JsonKind.String ? Str : fallback;
+
+        public bool Has(string key) => Kind == JsonKind.Object && Object.ContainsKey(key);
+
+        // 安全读取：缺键/类型不对时返回 fallback（不再 NRE —— 实测踩过：config 少一个键就抛异常）
+        public string GetStr(string key, string fallback = null) { var v = this[key]; return v != null ? v.AsString(fallback) : fallback; }
+        public int GetInt(string key, int fallback = 0) { var v = this[key]; return v != null ? v.AsInt(fallback) : fallback; }
+        public bool GetBool(string key, bool fallback = false) { var v = this[key]; return v != null && v.Kind == JsonKind.Bool ? v.Bool : fallback; }
+        public float GetFloat(string key, float fallback = 0f) { var v = this[key]; return v != null ? v.AsFloat(fallback) : fallback; }
+    }
+
+    /// <summary>JSON 解析失败（本文件自带，不依赖别处）</summary>
+    public sealed class JsonException : System.Exception
+    {
+        public JsonException(string message) : base(message) { }
+    }
+
+    public static class Json
+    {
+        /// <summary>读一个**字符串数组**字段（例 `"targets": ["Item_SMG_MP5_Normal"]`）。
+        /// **只收数组** —— 写成单个字符串会被忽略 （保持一种写法，避免"有时行有时不行"）；
+        /// 解析结果会在启动日志里打出来 （`targets=[…]`），于是 写错了看得见 </summary>
+        public static System.Collections.Generic.List<string> Strings(JsonValue j, string key)
+        {
+            var outp = new System.Collections.Generic.List<string>();
+            if (j == null || j.Kind != JsonKind.Object) return outp;
+            var v = j[key];
+            if (v == null || !v.IsArray) return outp;
+            for (int i = 0; i < v.Count; i++)
+            {
+                var sv = v[i];
+                if (sv != null && sv.Kind == JsonKind.String && !string.IsNullOrEmpty(sv.Str)) outp.Add(sv.Str);
+            }
+            return outp;
+        }
+
+        public static JsonValue Parse(string text)
+        {
+            int i = 0;
+            var v = ParseValue(text, ref i);
+            SkipWs(text, ref i);
+            return v;   // 尾随内容忽略
+        }
+
+        static JsonValue ParseValue(string s, ref int i)
+        {
+            SkipWs(s, ref i);
+            if (i >= s.Length) throw new JsonException("JSON ended unexpectedly");
+            char c = s[i];
+            switch (c)
+            {
+                case '{': return ParseObject(s, ref i);
+                case '[': return ParseArray(s, ref i);
+                case '"': return new JsonValue { Kind = JsonKind.String, Str = ParseString(s, ref i) };
+                case 't': Expect(s, ref i, "true"); return new JsonValue { Kind = JsonKind.Bool, Bool = true };
+                case 'f': Expect(s, ref i, "false"); return new JsonValue { Kind = JsonKind.Bool, Bool = false };
+                case 'n': Expect(s, ref i, "null"); return new JsonValue { Kind = JsonKind.Null };
+                default: return new JsonValue { Kind = JsonKind.Number, Number = ParseNumber(s, ref i) };
+            }
+        }
+
+        static JsonValue ParseObject(string s, ref int i)
+        {
+            var obj = new Dictionary<string, JsonValue>();
+            i++;                                   // '{'
+            SkipWs(s, ref i);
+            if (i < s.Length && s[i] == '}') { i++; return new JsonValue { Kind = JsonKind.Object, Object = obj }; }
+            while (true)
+            {
+                SkipWs(s, ref i);
+                var key = ParseString(s, ref i);
+                SkipWs(s, ref i);
+                if (i >= s.Length || s[i] != ':') throw new JsonException($"JSON: expected ':' at position {i}");
+                i++;
+                obj[key] = ParseValue(s, ref i);
+                SkipWs(s, ref i);
+                if (i >= s.Length) throw new JsonException("JSON: the object is not closed");
+                if (s[i] == ',') { i++; continue; }
+                if (s[i] == '}') { i++; break; }
+                throw new JsonException($"JSON: expected ',' or '}}' at position {i}");
+            }
+            return new JsonValue { Kind = JsonKind.Object, Object = obj };
+        }
+
+        static JsonValue ParseArray(string s, ref int i)
+        {
+            var arr = new List<JsonValue>();
+            i++;                                   // '['
+            SkipWs(s, ref i);
+            if (i < s.Length && s[i] == ']') { i++; return new JsonValue { Kind = JsonKind.Array, Array = arr }; }
+            while (true)
+            {
+                arr.Add(ParseValue(s, ref i));
+                SkipWs(s, ref i);
+                if (i >= s.Length) throw new JsonException("JSON: the array is not closed");
+                if (s[i] == ',') { i++; continue; }
+                if (s[i] == ']') { i++; break; }
+                throw new JsonException($"JSON: expected ',' or ']' at position {i}");
+            }
+            return new JsonValue { Kind = JsonKind.Array, Array = arr };
+        }
+
+        static string ParseString(string s, ref int i)
+        {
+            SkipWs(s, ref i);
+            if (i >= s.Length || s[i] != '"') throw new JsonException($"JSON: expected a string at position {i}");
+            i++;
+            var sb = new StringBuilder();
+            while (i < s.Length)
+            {
+                char c = s[i++];
+                if (c == '"') return sb.ToString();
+                if (c != '\\') { sb.Append(c); continue; }
+                if (i >= s.Length) break;
+                char e = s[i++];
+                switch (e)
+                {
+                    case '"': sb.Append('"'); break;
+                    case '\\': sb.Append('\\'); break;
+                    case '/': sb.Append('/'); break;
+                    case 'b': sb.Append('\b'); break;
+                    case 'f': sb.Append('\f'); break;
+                    case 'n': sb.Append('\n'); break;
+                    case 'r': sb.Append('\r'); break;
+                    case 't': sb.Append('\t'); break;
+                    case 'u':
+                        if (i + 4 <= s.Length)
+                        {
+                            sb.Append((char)Convert.ToInt32(s.Substring(i, 4), 16));
+                            i += 4;
+                        }
+                        break;
+                    default: sb.Append(e); break;
+                }
+            }
+            throw new JsonException("JSON: the string is not closed");
+        }
+
+        static double ParseNumber(string s, ref int i)
+        {
+            int start = i;
+            while (i < s.Length && (char.IsDigit(s[i]) || s[i] == '-' || s[i] == '+' || s[i] == '.' || s[i] == 'e' || s[i] == 'E')) i++;
+            var slice = s.Substring(start, i - start);
+            if (!double.TryParse(slice, NumberStyles.Float, CultureInfo.InvariantCulture, out var d))
+                throw new JsonException($"JSON: '{slice}' is not a number at position {start}");
+            return d;
+        }
+
+        static void SkipWs(string s, ref int i)
+        {
+            while (i < s.Length && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) i++;
+        }
+
+        static void Expect(string s, ref int i, string token)
+        {
+            if (i + token.Length > s.Length || s.Substring(i, token.Length) != token)
+                throw new JsonException($"JSON: expected '{token}' at position {i}");
+            i += token.Length;
+        }
+    }
+}
