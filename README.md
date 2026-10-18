@@ -50,7 +50,7 @@ docs/              该游戏的数据地图与做法（接入时由 agent 写）
 ```bash
 dotnet build tools/data-probe -c Release && dotnet build tools/api-probe -c Release
 dotnet tools/data-probe/bin/Release/net8.0/data-probe.dll --data <Data 目录> --action classes
-dotnet tools/api-probe/bin/Release/net8.0/api-probe.dll --managed <Managed 目录> --action search --target Item
+dotnet tools/api-probe/bin/Release/net8.0/api-probe.dll --managed <Managed 目录> --dll '<程序集名>.*' --action search --target Item
 ```
 
 两个工具的用法、出口码与边界各自在 `tools/*/README.md`。

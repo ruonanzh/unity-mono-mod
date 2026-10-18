@@ -8,7 +8,7 @@
 |---|---|---|
 | 1 | 游戏怎么加载 mod？（装配目录、入口类命名、有无清单文件） | 游戏官方文档 + 反编译 loader 相关类 |
 | 2 | mod 产物放哪？目录名与入口名有什么关系？ | 同上；写错会静默不加载，必须实测一次 |
-| 3 | 入口基类/接口叫什么？生命周期方法有哪些？ | `api-probe --action search --target Behaviour` 一类 |
+| 3 | 入口基类/接口叫什么？生命周期方法有哪些？ | `api-probe --managed <Managed> --dll '<程序集>.*' --action search --target Behaviour` 一类 |
 | 4 | 资产放在哪种文件？（`.assets` / AssetBundle / 自研格式） | 看 `Data/` 目录结构 + `data-probe --action classes` |
 | 5 | 物品/实体用什么**标识**？整数 id、字符串 key，还是资产引用？ | `data-probe --action export` 抽样 |
 | 6 | 有哪些「容器」概念（商店、掉落、配方、任务）？各自的类名？ | `data-probe --action list/search` |
