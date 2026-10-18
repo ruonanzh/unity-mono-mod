@@ -18,6 +18,7 @@ libs/modules/      可选模块（按 game.json 的 modules 启用）：gltf 等
 tools/data-probe   离线读资产（不依赖任何游戏类名）
 tools/api-probe    离线读 DLL 的 API
 scripts/           门禁：文档引用可达、中文提示词规范
+editors/_template/  浏览器内调模型的编辑器模板（vendored three.js，不走 CDN）
 docs/              该游戏的数据地图与做法（接入时由 agent 写）
 ```
 

@@ -1,0 +1,10 @@
+{
+  "apiVersion": 1,
+  "id": "TEMPLATE_EDITOR",
+  "name": "TODO: 工具名",
+  "match": ["*.glb"],
+  "entry": "index.html",
+  "mode": "edit",
+  "readScope": "siblings",
+  "description": "TODO: 一句话说明这个编辑器做什么"
+}
