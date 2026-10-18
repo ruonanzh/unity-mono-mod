@@ -60,7 +60,7 @@ dotnet run --project tools/api-probe -- \
 
 `lib/` 下随附 ILSpy 的 `ICSharpCode.Decompiler`（MIT, v11.1.0.9782）及其两个 BCL 依赖
 （`System.Reflection.Metadata` / `System.Collections.Immutable`），针对 net8.0。
-许可全文与版本见本目录 `lib/` 随附说明（本仓暂未提供仓根许可清单）。
+许可全文与版本见仓根 `THIRD_PARTY_LICENSES.md`。
 **无需 NuGet 下载** —— `dotnet run` 时直接引用 `lib/`。
 
 > 为什么不用 `ilspycmd`（CLI）：它没有"引用/调用点"等能力，且不便被工具调用；我们要的是
