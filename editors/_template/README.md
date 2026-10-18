@@ -7,10 +7,15 @@ editors/<tool-id>/
 ├─ .editor.tool.json   宿主读的清单：id / name / match（如 "*.glb"）/ entry / mode / readScope
 ├─ index.html          入口页面
 ├─ editor.js           编辑器逻辑
-├─ three.bundle.js     **vendored** 的 three.js（见许可）
+├─ three.bundle.js     **不由模板提供**（1.4 MB）：用时自己放进来，见下
 ├─ assets/             参照模型（可选）
 └─ THIRD_PARTY_LICENSES.md
 ```
+
+**模板不带 `three.bundle.js`**（避免仓库多一份 1.4 MB 的重复二进制）。要用时二选一：
+
+- 从上游 three.js 取对应版本，按 `THIRD_PARTY_LICENSES.md` 里的方式 esbuild 打成 IIFE；
+- 或从本游戏已有的编辑器目录（例如 duckov 仓 `editors/duckov_3d_editor/three.bundle.js`）复制一份。
 
 三条约束：
 
