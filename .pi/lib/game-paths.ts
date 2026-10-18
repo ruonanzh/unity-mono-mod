@@ -115,7 +115,9 @@ export function readModRepoConfig(cwd: string): ModRepoConfig {
   return {
     sentinel: g.sentinel ?? "",
     game: { name: g.name, steamAppId: g.steamAppId, installDirHint: g.installDirHint },
-    compile: { managedDir: managed },
+    // `assemblies`（game.json 里的"本游戏自己的程序集"）映射成旧形状的 compile.references：
+    // 只做形状换算，不加语义。inspect_game_api 用它拼默认 `--dll`。
+    compile: { managedDir: managed, references: Array.isArray(g.assemblies) ? g.assemblies : [] },
     modInstall: { path: installPath, relativeTo: "gameDir" },
     workshop: typeof g.workshop === "boolean" ? { supported: g.workshop } : undefined,
   };

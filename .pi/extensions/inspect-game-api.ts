@@ -61,7 +61,7 @@ export default function (pi: ExtensionAPI) {
       dll: Type.Optional(
         Type.String({
           description:
-            "Managed DLL name to read. Use commas to separate several DLLs, or use '*' for every non-framework DLL in the Managed directory (the default is '*').",
+            "Which managed DLL to read: a DLL name without the extension, a comma list, a wildcard (for example 'MyGame.*'), an absolute path, or '*' for every non-framework DLL under the Managed directory. Omit to use this repo's configured assemblies. A type can live in several DLLs; if a lookup misses, search another DLL instead of assuming the type does not exist.",
         }),
       ),
       limit: Type.Optional(Type.Number({ description: "Max output lines (default 2000)." })),
@@ -127,7 +127,14 @@ export default function (pi: ExtensionAPI) {
       const args = [probeDll, "--managed", managed, "--action", params.action];
       if (params.target) args.push("--target", params.target);
       if (params.member) args.push("--member", params.member);
-      if (params.dll) args.push("--dll", params.dll);
+      // 探针不自带默认值（它不得知道任何具体游戏的程序集名）⇒ 默认来自本仓 `game.json` 的 assemblies。
+      // 排除 Unity 的程序集：它们很大，默认扫只为少数 Unity 类型查询付出太高代价。
+      const cfgRefs = ((cfg as { compile?: { references?: string[] } }).compile?.references ?? [])
+        .filter((r) => typeof r === "string" && r.length > 0)
+        .filter((r) => !/^Unity\*?\.dll$/i.test(r))
+        .map((r) => r.replace(/\.dll$/i, ""));
+      const defaultDll = cfgRefs.length > 0 ? cfgRefs.join(",") : "*";
+      args.push("--dll", params.dll ?? defaultDll);
       args.push("--limit", String(params.limit ?? 2000));
       if (params.offset !== undefined) args.push("--offset", String(params.offset));
       let out: string;
@@ -157,7 +164,7 @@ export default function (pi: ExtensionAPI) {
         details: {
           ok: true,
           action: params.action,
-          dll: params.dll ?? "*",
+          dll: params.dll ?? defaultDll,
           managedDir: managed,
         },
       };
