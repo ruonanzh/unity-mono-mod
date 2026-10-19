@@ -16,7 +16,8 @@ mods/_template/    新 mod 的样板：csproj + 入口类 + info.ini + config.js
 libs/core/         纯托管 helper（无 3D、无游戏类型）：Json / PatchRegistry / ModelCache
 libs/modules/      可选模块（按 game.json 的 modules 启用）：gltf 等
 tools/data-probe   离线读资产（不依赖任何游戏类名）
-tools/api-probe    离线读 DLL 的 API
+tools/api-probe    离线读 DLL 的 API；`--action dump --out <dir>` 写成一棵可 grep 的树
+decompile.json     读代码的范围（`dump.assemblies`：DLL 名或通配），换游戏只改这里
 scripts/           门禁：文档引用可达、中文提示词规范
 editors/_template/  浏览器内调模型的编辑器模板（vendored three.js，不走 CDN）
 docs/              该游戏的数据地图与做法（接入时由 agent 写）
@@ -27,6 +28,7 @@ docs/              该游戏的数据地图与做法（接入时由 agent 写）
 1. `cp -r mods/_template mods/<你的 mod 名>`，改三处名字（csproj 的 `AssemblyName`、`ModBehaviour` 的 namespace、`info.ini` 的 `name`）。三者必须一致，否则游戏静默不加载（这条是常见约定，具体以该游戏文档为准）。
 2. 填 `game.json`。
 3. 用 `tools/api-probe` 反编译该游戏 DLL，确认入口基类与数据结构；用 `tools/data-probe` 列类、抽样。
+   要全库 grep 时填 `decompile.json` 的 `dump.assemblies`，再 `inspect_game_code action=dump`。
 4. 把结论写进 `docs/` 与该游戏的 `AGENTS.md`，每条带实测来源。
 5. 编译：`GAME_DIR=<游戏目录> dotnet build mods/<name>`。
 
