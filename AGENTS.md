@@ -21,7 +21,7 @@
 - **不把判断写进公共代码**：像「哪块是本体、哪些要关、挂点在哪」这类结论，只放在该游戏的 `docs/` 与该游戏的示例代码里。
 - **不假设 3D**：2D 游戏只用 `libs/core`，`libs/modules` 整段不启用。
 - **一处改动一处验证**：改完必须能编译、能加载，并给出可复现的检查方式。
-- **读代码的范围写在 `decompile.json`**（`dump.assemblies` = 程序集名或通配），再让 `inspect_game_code` 生成并读取可 grep 的树。
+- **读代码的范围写在 `.pi/decompile.json`**（`dump.assemblies` = 程序集名或通配），再让 `inspect_game_code` 生成并读取可 grep 的树。
 - **工具不许写死游戏**：`tools/`、`.pi/lib/`、`.pi/extensions/` 里不得出现具体游戏的类名、目录名、程序集名；这些一律走 `game.json`。
 
 ## 目录职责
