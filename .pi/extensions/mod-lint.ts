@@ -6,7 +6,7 @@ import { join, basename, resolve, dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { runAsync } from "../lib/proc";
 import { NEW_ACTIONS, stripJsonComments, validateDataLayer, type GameNames } from "../lib/mod-config-data";
-import { readGameConfig } from "../lib/game-paths";
+import { managedDirFor, platformKey, readGameConfig, readModRepoConfig } from "../lib/game-paths";
 import os from "node:os";
 
 /** 该游戏的探针参数：目录与类名全部来自 game.json 的 `managedDir` / `assetsDir` / `checks`。
@@ -30,16 +30,6 @@ function probeLayout(cwd: string, gameDir: string) {
 }
 
 /** 从状态与 game.json 推出 Managed 目录（与 try_set_game_dir 的规则一致）。 */
-function resolveManaged(gameDir: string | null | undefined, cwd: string): string {
-  if (!gameDir) return "";
-  try {
-    const g = readGameConfig(cwd);
-    return g.managedDir ? join(gameDir, g.managedDir) : join(gameDir, "Managed");
-  } catch {
-    return join(gameDir, "Managed");
-  }
-}
-
 function parseIni(text: string) {
   const result: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
@@ -317,7 +307,7 @@ export default function (pi: ExtensionAPI) {
             env: {
               ...process.env,
               GAME_DIR: state.gameDir,
-              GAME_MANAGED_DIR: state.managedDir ?? resolveManaged(state.gameDir, repoRoot),
+              GAME_MANAGED_DIR: state.managedDir ?? managedDirFor(state.gameDir, readModRepoConfig(repoRoot), platformKey()) ?? "",
             },
             timeoutMs: 300_000,
           });
